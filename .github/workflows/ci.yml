@@ -1,0 +1,99 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  lint:
+    name: Lint & Code Style
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          check-latest: true
+
+      - name: Format check
+        run: |
+          diff=$(gofmt -s -l .)
+          if [ -n "$diff" ]; then
+            echo "The following files are not formatted:"
+            echo "$diff"
+            exit 1
+          fi
+
+      - name: Go vet
+        run: go vet ./...
+
+  test:
+    name: Test & Coverage
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        go: ['1.22', '1.23']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: Run unit & race tests
+        run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Upload Coverage Artifact (Linux only)
+        if: matrix.os == 'ubuntu-latest' && matrix.go == '1.23'
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage-report
+          path: coverage.out
+
+  build:
+    name: Cross-Platform Build
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build cross-platform binaries
+        run: |
+          mkdir -p dist
+          # Linux AMD64 & ARM64
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/p2p-linux-amd64 ./cmd/p2p
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/p2p-linux-arm64 ./cmd/p2p
+          
+          # macOS Intel & Apple Silicon
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/p2p-darwin-amd64 ./cmd/p2p
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/p2p-darwin-arm64 ./cmd/p2p
+          
+          # Windows AMD64
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/p2p-windows-amd64.exe ./cmd/p2p
+          
+          # Generate SHA256 checksums
+          cd dist
+          sha256sum p2p-* > checksums.txt
+          cd ..
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2p-binaries
+          path: dist/*

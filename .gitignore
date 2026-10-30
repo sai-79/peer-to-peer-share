@@ -1,0 +1,31 @@
+# Binaries
+bin/
+/p2p
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+coverage.out
+coverage.html
+*.test
+
+# Go workspace & cache
+.go/
+vendor/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*~
+
+# Temporary downloaded chunks / test files
+tmp/
+testdata/downloads/
